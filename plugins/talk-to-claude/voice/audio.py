@@ -31,7 +31,7 @@ CALIBRATE = 0.4         # only used when continuous listening is off
 
 ONSET = 3               # consecutive loud blocks before we call it speech
 MIN_SPEECH = 0.3        # seconds of speech before silence may end the turn
-NO_SPEECH = 8.0         # give up if nothing has been said by now
+NO_SPEECH = float(os.environ.get("VOICE_NO_SPEECH", "4.0"))   # give up by now
 
 CONTINUOUS = os.environ.get("VOICE_CONTINUOUS", "1") != "0"
 STEP = BLOCK / SAMPLE_RATE
