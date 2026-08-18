@@ -9,6 +9,8 @@ FLOOR = 0.015           # quiet-room threshold, and the lower bound
 WARMUP = 0.3            # a device returns silence while it starts, AirPods especially
 CALIBRATE = 0.4         # seconds of room tone to measure after that
 MARGIN = 3.0            # speech has to be this much louder than the room
+ONSET = 3               # consecutive loud blocks before we call it speech
+MIN_SPEECH = 0.5        # seconds of speech before silence is allowed to end it
 
 
 def _calibrate(stream) -> float:
@@ -40,6 +42,7 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
     starts or never stops.
     """
     frames, started, silent_for, elapsed = [], False, 0.0, 0.0
+    loud_run, speech = 0, 0.0
     step = BLOCK / SAMPLE_RATE
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
                         dtype="float32", blocksize=BLOCK) as stream:
@@ -48,13 +51,24 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
             data, _ = stream.read(BLOCK)
             elapsed += step
             if float(np.sqrt(np.mean(data ** 2))) > threshold:
-                started, silent_for = True, 0.0
+                # A single loud block is a door or a cup. Speech is sustained,
+                # so wait for a run of them before deciding the turn started.
+                loud_run += 1
+                silent_for = 0.0
+                if loud_run >= ONSET:
+                    started = True
+                    speech += step
                 frames.append(data.copy())
-            elif started:
-                silent_for += step
-                frames.append(data.copy())
-                if silent_for >= silence_seconds:
-                    break
+            else:
+                loud_run = 0
+                if started:
+                    silent_for += step
+                    frames.append(data.copy())
+                    # Do not let a gap end a turn that has barely begun.
+                    if silent_for >= silence_seconds and speech >= MIN_SPEECH:
+                        break
+                elif frames:
+                    frames.clear()        # drop the transient we were holding
     return np.concatenate(frames).flatten() if frames else np.array([], "float32")
 
 
