@@ -104,7 +104,13 @@ def strip_markup(text: str) -> str:
 
 @mcp.tool()
 async def speak(text: str) -> str:
-    """Read text aloud to the user through the computer's speakers."""
+    """Read text aloud to the user through the computer's speakers.
+
+    Pass a spoken version of your answer, not the answer itself: one to three
+    sentences, no markdown, no paths or URLs. Write the full reply to the
+    terminal as usual and speak a summary of it. Markup is stripped before
+    speaking, so formatting is wasted rather than harmful.
+    """
     if GLOBAL_MUTE.exists():
         return "muted"
 
