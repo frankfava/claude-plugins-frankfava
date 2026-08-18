@@ -1,13 +1,12 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mcp<2", "sounddevice", "numpy", "pywhispercpp"]
+# dependencies = ["mcp<2", "sounddevice", "numpy", "pywhispercpp", "kokoro"]
 # ///
 """Local MCP server exposing voice as tools. Runs on macOS and Windows."""
 
 import asyncio
 import os
 import re
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -17,12 +16,11 @@ import sounddevice as sd
 from mcp.server.fastmcp import FastMCP
 from pywhispercpp.model import Model
 
+sys.path.insert(0, str(Path(__file__).parent))
+import tts   # noqa: E402  (needs the path above)
+
 mcp = FastMCP("voice")
 
-MACOS = sys.platform == "darwin"
-VOICE = "Daniel" if MACOS else "Microsoft Zira Desktop"
-RATE = "190" if MACOS else "1"
-PS1 = Path.home() / ".claude/voice/say.ps1"
 
 # Speech is a tool now, so it no longer passes through the hooks that own the
 # mute flags. Only the global flag is reachable from here: a tool call carries
@@ -119,25 +117,10 @@ async def speak(text: str) -> str:
     if not spoken:
         return "nothing to speak"
 
-    if MACOS:
-        subprocess.run(["pkill", "-x", "say"], capture_output=True)
-        cmd = ["say", "-v", VOICE, "-r", RATE, "-f", "-"]
-    else:
-        cmd = [
-            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
-            "-File", str(PS1), "-Voice", VOICE, "-Rate", RATE,
-        ]
-
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    # Text on stdin on both platforms, never argv. Awaited rather than
-    # detached, which matters as soon as a microphone is involved.
-    await proc.communicate(spoken.encode("utf-8"))
-    return f"spoke {len(spoken)} characters"
+    # Awaited rather than detached: the next thing to happen is the microphone
+    # opening, and an open mic in front of a talking speaker transcribes the
+    # computer.
+    return await asyncio.to_thread(tts.speak_text, spoken)
 
 
 @mcp.tool()
