@@ -10,7 +10,8 @@ WARMUP = 0.3            # a device returns silence while it starts, AirPods espe
 CALIBRATE = 0.4         # seconds of room tone to measure after that
 MARGIN = 3.0            # speech has to be this much louder than the room
 ONSET = 3               # consecutive loud blocks before we call it speech
-MIN_SPEECH = 0.5        # seconds of speech before silence is allowed to end it
+MIN_SPEECH = 0.3        # seconds of speech before silence is allowed to end it
+NO_SPEECH = 8.0         # give up if nothing has been said by now
 
 
 def _calibrate(stream) -> float:
@@ -55,8 +56,12 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
                 # so wait for a run of them before deciding the turn started.
                 loud_run += 1
                 silent_for = 0.0
-                if loud_run >= ONSET:
-                    started = True
+                if loud_run == ONSET:
+                    # The onset blocks were speech too. Not counting them makes
+                    # a one-word answer unable to reach MIN_SPEECH, so it never
+                    # ends and the recording runs to max_seconds.
+                    started, speech = True, ONSET * step
+                elif started:
                     speech += step
                 frames.append(data.copy())
             else:
@@ -67,8 +72,14 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
                     # Do not let a gap end a turn that has barely begun.
                     if silent_for >= silence_seconds and speech >= MIN_SPEECH:
                         break
+                    # An utterance too short to meet the minimum still has to
+                    # end. Without this it waits for max_seconds.
+                    if silent_for >= silence_seconds * 3:
+                        break
                 elif frames:
                     frames.clear()        # drop the transient we were holding
+                if not started and elapsed > NO_SPEECH:
+                    break                 # nobody spoke; the loop reads this as goodbye
     return np.concatenate(frames).flatten() if frames else np.array([], "float32")
 
 
