@@ -1,0 +1,10 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "frankfava",
+  "description": "Claude Code plugins by Frank Fava.",
+  "owner": {
+    "name": "Frank Fava"
+  },
+  "plugins": [
+  ]
+}
