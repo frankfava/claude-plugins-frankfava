@@ -5,6 +5,7 @@
 """Local MCP server exposing voice as tools. Runs on macOS and Windows."""
 
 import asyncio
+import os
 import re
 import subprocess
 import sys
@@ -152,5 +153,16 @@ async def listen(silence_seconds: float = 1.5) -> str:
     return await asyncio.to_thread(_transcribe, audio)
 
 
+# Serving over HTTP rather than stdio is what lets the hooks reach the same
+# warm process Claude Code is talking to. Loading a model per invocation is the
+# thing this exists to avoid.
+HOST = os.environ.get("VOICE_HOST", "127.0.0.1")
+PORT = int(os.environ.get("VOICE_PORT", "51100"))
+
 if __name__ == "__main__":
-    mcp.run()
+    if "--http" in sys.argv:
+        mcp.settings.host = HOST
+        mcp.settings.port = PORT
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()
