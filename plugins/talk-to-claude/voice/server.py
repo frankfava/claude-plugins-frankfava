@@ -80,7 +80,7 @@ async def listen(silence_seconds: float = 1.5) -> str:
     pcm = await asyncio.to_thread(audio.record, silence_seconds, 120.0, tts.interrupt)
     if pcm.size < audio.SAMPLE_RATE // 2:
         return ""
-    return await asyncio.to_thread(stt.transcribe, pcm)
+    return await asyncio.to_thread(stt.transcribe, audio.trim(pcm, audio.FLOOR))
 
 
 # Serving over HTTP rather than stdio is what lets the hooks reach the same
@@ -124,6 +124,7 @@ async def http_listen(request: Request) -> PlainTextResponse:
     pcm = await asyncio.to_thread(audio.record, seconds, 120.0, tts.interrupt)
     if pcm.size < audio.SAMPLE_RATE // 2:
         return PlainTextResponse("")
+    pcm = audio.trim(pcm, audio.FLOOR)
     return PlainTextResponse(await asyncio.to_thread(stt.transcribe, pcm))
 
 

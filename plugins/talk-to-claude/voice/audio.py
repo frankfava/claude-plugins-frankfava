@@ -228,6 +228,26 @@ def room_level() -> tuple[float, float]:
     return 0.0, FLOOR
 
 
+def trim(pcm: "np.ndarray", threshold: float, pad: float = 0.2) -> "np.ndarray":
+    """Cut the quiet ends off a clip, keeping a little padding.
+
+    A barge-in clip is mostly speaker bleed with a short burst of voice in it.
+    Handing all of that to a transcriber gives it far more noise than signal,
+    which is how "stop" comes back as "alright". Sending the voice alone is a
+    dozen lines and removes the guesswork.
+    """
+    if pcm.size == 0:
+        return pcm
+    blocks = pcm[:pcm.size - pcm.size % BLOCK].reshape(-1, BLOCK)
+    loud = np.where(np.sqrt((blocks ** 2).mean(axis=1)) > threshold)[0]
+    if loud.size == 0:
+        return pcm
+    pad_blocks = max(1, int(pad * SAMPLE_RATE / BLOCK))
+    start = max(0, loud[0] - pad_blocks)
+    end = min(blocks.shape[0], loud[-1] + pad_blocks + 1)
+    return blocks[start:end].reshape(-1)
+
+
 def to_wav(audio: "np.ndarray") -> bytes:
     """16-bit PCM in memory, which is what every transcription API wants."""
     import io
