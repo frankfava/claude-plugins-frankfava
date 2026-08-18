@@ -5,7 +5,29 @@ import sounddevice as sd
 
 SAMPLE_RATE = 16000
 BLOCK = 1600            # 0.1 s
-THRESHOLD = 0.015       # RMS amplitude that counts as speech
+FLOOR = 0.015           # quiet-room threshold, and the lower bound
+WARMUP = 0.3            # a device returns silence while it starts, AirPods especially
+CALIBRATE = 0.4         # seconds of room tone to measure after that
+MARGIN = 3.0            # speech has to be this much louder than the room
+
+
+def _calibrate(stream) -> float:
+    """Set the speech threshold from the room rather than from a constant.
+
+    A fixed threshold is really an assumption about where you are sitting. In a
+    cafe the ambient floor sits above it, so the recorder triggers on other
+    people and never hears the silence it needs to stop on. Measuring the room
+    first costs four hundred milliseconds and makes the same code work at a
+    desk and in a crowd.
+    """
+    for _ in range(int(WARMUP * SAMPLE_RATE / BLOCK)):
+        stream.read(BLOCK)          # discard: measuring this reads the room as silent
+
+    levels = []
+    for _ in range(int(CALIBRATE * SAMPLE_RATE / BLOCK)):
+        data, _ = stream.read(BLOCK)
+        levels.append(float(np.sqrt(np.mean(data ** 2))))
+    return max(FLOOR, float(np.median(levels)) * MARGIN)
 
 
 def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndarray":
@@ -21,10 +43,11 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
     step = BLOCK / SAMPLE_RATE
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
                         dtype="float32", blocksize=BLOCK) as stream:
+        threshold = _calibrate(stream)
         while elapsed < max_seconds:      # a hard cap; a noisy room never falls silent
             data, _ = stream.read(BLOCK)
             elapsed += step
-            if float(np.sqrt(np.mean(data ** 2))) > THRESHOLD:
+            if float(np.sqrt(np.mean(data ** 2))) > threshold:
                 started, silent_for = True, 0.0
                 frames.append(data.copy())
             elif started:
@@ -33,6 +56,20 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
                 if silent_for >= silence_seconds:
                     break
     return np.concatenate(frames).flatten() if frames else np.array([], "float32")
+
+
+def room_level(seconds: float = 0.4) -> tuple[float, float]:
+    """Report the current noise floor and the threshold it would produce."""
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+                        dtype="float32", blocksize=BLOCK) as stream:
+        for _ in range(int(WARMUP * SAMPLE_RATE / BLOCK)):
+            stream.read(BLOCK)
+        levels = []
+        for _ in range(int(seconds * SAMPLE_RATE / BLOCK)):
+            data, _ = stream.read(BLOCK)
+            levels.append(float(np.sqrt(np.mean(data ** 2))))
+    floor = float(np.median(levels))
+    return floor, max(FLOOR, floor * MARGIN)
 
 
 def to_wav(audio: "np.ndarray") -> bytes:
