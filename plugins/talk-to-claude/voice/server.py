@@ -14,7 +14,8 @@ from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 sys.path.insert(0, str(Path(__file__).parent))
-import audio  # noqa: E402  (all three need the path above)
+import audio  # noqa: E402  (all of these need the path above)
+import mute   # noqa: E402
 import stt    # noqa: E402
 import tts    # noqa: E402
 
@@ -57,7 +58,7 @@ async def speak(text: str) -> str:
     terminal as usual and speak a summary of it. Markup is stripped before
     speaking, so formatting is wasted rather than harmful.
     """
-    if GLOBAL_MUTE.exists():
+    if mute.silent():
         return "muted"
 
     spoken = strip_markup(text)
@@ -71,7 +72,7 @@ async def speak(text: str) -> str:
 
 
 @mcp.tool()
-async def listen(silence_seconds: float = 1.5) -> str:
+async def listen(silence_seconds: float = 2.5) -> str:
     """Record until the user stops talking, then transcribe.
 
     Returns an empty string when the user says nothing, which is the
@@ -98,7 +99,7 @@ async def http_say(request: Request) -> PlainTextResponse:
     immediately keeps the hook from blocking the turn for the length of the
     sentence, which is what `async: true` exists for elsewhere.
     """
-    if GLOBAL_MUTE.exists():
+    if mute.silent():
         return PlainTextResponse("muted")
 
     text = strip_markup((await request.body()).decode("utf-8"))
@@ -118,9 +119,9 @@ async def http_listen(request: Request) -> PlainTextResponse:
     was doing beforehand.
     """
     try:
-        seconds = float(request.query_params.get("silence", "1.5"))
+        seconds = float(request.query_params.get("silence", str(audio.SILENCE)))
     except ValueError:
-        seconds = 1.5
+        seconds = audio.SILENCE
     pcm = await asyncio.to_thread(audio.record, seconds, 120.0, tts.interrupt)
     if pcm.size < audio.SAMPLE_RATE // 2:
         return PlainTextResponse("")

@@ -36,6 +36,10 @@ CALIBRATE = 0.4         # only used when continuous listening is off
 ONSET = 3               # consecutive loud blocks before we call it speech
 MIN_SPEECH = 0.3        # seconds of speech before silence may end the turn
 NO_SPEECH = float(os.environ.get("VOICE_NO_SPEECH", "4.0"))   # give up by now
+# How long a pause is allowed to be before it counts as the end of a turn.
+# 1.5 is fine for answering a question and too short for composing a thought,
+# which presents as being cut off mid-sentence.
+SILENCE = float(os.environ.get("VOICE_SILENCE", "2.5"))
 
 CONTINUOUS = os.environ.get("VOICE_CONTINUOUS", "1") != "0"
 
@@ -97,9 +101,15 @@ class _Device:
         """
         while True:
             if self._manual is None:
-                needed = self._sink is not None or _handsfree_anywhere()
+                # Three reasons to be open: a session is hands-free, a recording
+                # is running, or we are speaking and you might cut us off. The
+                # third is easy to forget, and forgetting it means barge-in
+                # quietly does nothing whenever hands-free is off.
+                needed = (self._sink is not None
+                          or _handsfree_anywhere()
+                          or (BARGE and SPEAKING_FLAG.exists()))
                 self.set_open(needed)
-            time.sleep(1.0)
+            time.sleep(0.2)     # fast enough to catch the start of an utterance
 
     def _run(self) -> None:
         while True:
@@ -196,7 +206,7 @@ def _consume(next_block, threshold, silence_seconds: float, max_seconds: float,
     return np.concatenate(frames).flatten() if frames else np.array([], "float32")
 
 
-def record(silence_seconds: float = 1.5, max_seconds: float = 120.0,
+def record(silence_seconds: float = SILENCE, max_seconds: float = 120.0,
            on_speech=None) -> "np.ndarray":
     """Wait for speech, then record until it stops.
 
