@@ -12,7 +12,7 @@ from pathlib import Path
 
 import audio
 
-BACKEND = os.environ.get("VOICE_STT", "whispercpp")
+BACKEND = os.environ.get("VOICE_STT", "deepgram")
 IDLE_UNLOAD = float(os.environ.get("VOICE_IDLE_UNLOAD", "900"))
 
 # Borrowed rather than duplicated: these are ordinary GGML weights under a
