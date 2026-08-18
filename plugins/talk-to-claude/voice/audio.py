@@ -12,7 +12,6 @@ device is live, which is a different posture from opening it per turn. Set
 VOICE_CONTINUOUS=0 to calibrate per recording instead.
 """
 
-import glob
 import os
 import queue
 import threading
@@ -58,11 +57,6 @@ SPEAKING_FLAG = Path(os.environ.get("TMPDIR", "/tmp")) / "talk-to-claude-speakin
 STEP = BLOCK / SAMPLE_RATE
 
 
-def _handsfree_anywhere() -> bool:
-    """Any session in hands-free mode keeps the shared device open."""
-    return bool(glob.glob(str(Path.home() / ".claude/.talk-to-claude-handsfree.*")))
-
-
 def _rms(block) -> float:
     return float(np.sqrt(np.mean(block ** 2)))
 
@@ -103,12 +97,12 @@ class _Device:
         """
         while True:
             if self._manual is None:
-                # Three reasons to be open: a session is hands-free, a recording
-                # is running, or we are speaking and you might cut us off. The
-                # third is easy to forget, and forgetting it means barge-in
-                # quietly does nothing whenever hands-free is off.
+                # Open when there is something to hear: a recording running, or
+                # speech playing that you might cut off. Being in hands-free is
+                # not a reason on its own. Most of that mode is Claude thinking,
+                # and an open microphone during thinking is a lit indicator with
+                # nothing behind it.
                 needed = (self._sink is not None
-                          or _handsfree_anywhere()
                           or (BARGE and SPEAKING_FLAG.exists()))
                 self.set_open(needed)
             time.sleep(0.2)     # fast enough to catch the start of an utterance
