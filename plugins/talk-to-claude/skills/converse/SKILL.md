@@ -9,11 +9,11 @@ The user is talking, not reading. Both halves of this run inside the turn, so yo
 
 ## Before the first exchange
 
-Silence the Stop hook for this session, or every answer is spoken twice, once by the tool and again when the turn ends:
+Silence the Stop hook for this session, or the last answer is spoken twice, once by the tool and again when the turn ends:
 
-    touch ~/.claude/.talk-to-claude-muted.SID
+    bash bin/voice-mute.sh on
 
-`SID` is this session's id, given at the end of the session context. Confirm in text that voice mode has started, then begin.
+Never write the flag file directly. The script resolves the live session id, which a value captured at session start does not survive a branch or a resume. Confirm in text that voice mode has started, then begin.
 
 ## Every exchange
 
@@ -29,7 +29,7 @@ Stop the loop when `listen` returns an empty string, which means nothing was sai
 
 On the way out, say goodbye and then restore the hook:
 
-    rm -f ~/.claude/.talk-to-claude-muted.SID
+    bash bin/voice-mute.sh off
 
 Do this even if the loop ends early or something fails, otherwise the user is left silently muted with no idea why.
 

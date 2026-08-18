@@ -17,8 +17,4 @@ find "$HOME/.claude" -maxdepth 1 -name '.talk-to-claude-muted.*' -mtime +1 -dele
 
 cat "$(dirname "$0")/../context/session-context.md"
 
-if [[ -n "$sid" ]]; then
-  printf '\nThe mute flag for this session is `~/.claude/.talk-to-claude-muted.%s`.\n' "$sid"
-fi
-
 exit 0

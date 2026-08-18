@@ -5,25 +5,18 @@ description: Silence or restore the spoken replies from the talk-to-claude plugi
 
 # Muting spoken replies
 
-Speech is controlled by flag files. Write or delete one, then confirm in text. `SID` is this session's id, given at the end of the session context.
+Run `bin/voice-mute.sh` in this plugin. Do not write flag files by hand, and never reuse a session id you saw earlier: a branched or resumed session gets a new one, and the script resolves the live id itself.
 
-| Intent | Action |
+| Intent | Command |
 |---|---|
-| Mute this session | `touch ~/.claude/.talk-to-claude-muted.SID` |
-| Mute every session | `touch ~/.claude/.talk-to-claude-muted` |
-| Unmute | delete the matching file |
-| Unmute here while everything is muted | `touch ~/.claude/.talk-to-claude-unmuted.SID` |
+| Mute here | `voice-mute.sh on` |
+| Mute here for an hour | `voice-mute.sh on 3600` |
+| Unmute here | `voice-mute.sh off` |
+| Mute everything | `voice-mute.sh global-on` |
+| Unmute everything | `voice-mute.sh global-off` |
+| Speak here while everything is muted | `voice-mute.sh here` |
+| What is in force | `voice-mute.sh status` |
 
-Prefer the per-session flag unless the user says everywhere. It never outlives its session, because the SessionStart hook clears it.
+Prefer the per-session form unless the user says everywhere. Report what `status` says rather than what you expect, then confirm in text.
 
-## Time limits
-
-An empty flag file means indefinite. To expire one, write a unix timestamp as its first line:
-
-    date -v+1H +%s > ~/.claude/.talk-to-claude-muted.SID
-
-Expired flags delete themselves on the next turn, so nothing needs scheduling and nothing needs cleaning up. Mute-everywhere persists until deleted, so offer a duration when the user does not name one.
-
-## Checking
-
-`lib/mute.sh` in this plugin is the policy. Run it with a session id to see what the hooks will do: exit 0 means silence, exit 1 means speak.
+Muting everywhere persists until it is lifted or expires, so offer a duration when the user does not name one. A per-session mute is cleared when that session next starts.
