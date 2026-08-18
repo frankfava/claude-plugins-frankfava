@@ -44,3 +44,7 @@ claude plugin validate .
 ```
 
 Updates are version-gated. Bump `version` in the plugin's `plugin.json` first, or `claude plugin update` will report you are already current and keep the old copy.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
