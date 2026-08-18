@@ -77,7 +77,7 @@ async def listen(silence_seconds: float = 1.5) -> str:
     Returns an empty string when the user says nothing, which is the
     signal to end the conversation.
     """
-    pcm = await asyncio.to_thread(audio.record, silence_seconds)
+    pcm = await asyncio.to_thread(audio.record, silence_seconds, 120.0, tts.interrupt)
     if pcm.size < audio.SAMPLE_RATE // 2:
         return ""
     return await asyncio.to_thread(stt.transcribe, pcm)
@@ -121,7 +121,7 @@ async def http_listen(request: Request) -> PlainTextResponse:
         seconds = float(request.query_params.get("silence", "1.5"))
     except ValueError:
         seconds = 1.5
-    pcm = await asyncio.to_thread(audio.record, seconds)
+    pcm = await asyncio.to_thread(audio.record, seconds, 120.0, tts.interrupt)
     if pcm.size < audio.SAMPLE_RATE // 2:
         return PlainTextResponse("")
     return PlainTextResponse(await asyncio.to_thread(stt.transcribe, pcm))

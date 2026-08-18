@@ -16,6 +16,7 @@ import os
 import queue
 import threading
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
@@ -34,6 +35,19 @@ MIN_SPEECH = 0.3        # seconds of speech before silence may end the turn
 NO_SPEECH = float(os.environ.get("VOICE_NO_SPEECH", "4.0"))   # give up by now
 
 CONTINUOUS = os.environ.get("VOICE_CONTINUOUS", "1") != "0"
+
+# Barge-in: listen while speaking, so an interruption is heard rather than
+# ignored. Only safe on headphones. Through laptop speakers the microphone
+# hears the synthesiser and every reply interrupts itself, so it is opt-out
+# per device rather than a setting you can leave on everywhere.
+BARGE = os.environ.get("VOICE_BARGE", "1") != "0"
+# Compared against per-block RMS, not sample peak, which is the mistake that
+# made an earlier value ten times too high. Measured through AirPods: bleed
+# sits at 0.006 median and 0.010 at the 95th percentile, while a voice talking
+# over the speaker reaches about 0.018. The gap is real but narrow, so this
+# needs remeasuring on any other output device.
+BARGE_THRESHOLD = float(os.environ.get("VOICE_BARGE_THRESHOLD", "0.013"))
+SPEAKING_FLAG = Path(os.environ.get("TMPDIR", "/tmp")) / "talk-to-claude-speaking"
 STEP = BLOCK / SAMPLE_RATE
 
 
@@ -74,7 +88,11 @@ class _Device:
 
     @property
     def threshold(self) -> float:
-        return _threshold_from(self._levels)
+        base = _threshold_from(self._levels)
+        # While the speaker is active the room includes us, so ask for more.
+        if BARGE and SPEAKING_FLAG.exists():
+            return max(base, BARGE_THRESHOLD)
+        return base
 
     def capture(self) -> queue.Queue:
         with self._lock:
@@ -89,14 +107,16 @@ class _Device:
 _device = _Device() if CONTINUOUS else None
 
 
-def _consume(next_block, threshold: float, silence_seconds: float, max_seconds: float):
+def _consume(next_block, threshold, silence_seconds: float, max_seconds: float,
+             on_speech=None):
     """The decision loop, fed one (level, block) at a time from either source."""
     frames, started, silent_for, elapsed = [], False, 0.0, 0.0
-    loud_run, speech = 0, 0.0
+    loud_run, speech, quiet_since = 0, 0.0, 0.0
     while elapsed < max_seconds:
         level, data = next_block()
         elapsed += STEP
-        if level > threshold:
+        limit = threshold() if callable(threshold) else threshold
+        if level > limit:
             # One loud block is a door or a cup. Speech is sustained.
             loud_run += 1
             silent_for = 0.0
@@ -104,6 +124,8 @@ def _consume(next_block, threshold: float, silence_seconds: float, max_seconds: 
                 # The onset blocks were speech too. Not counting them leaves a
                 # one-word answer unable to reach MIN_SPEECH, so it never ends.
                 started, speech = True, ONSET * STEP
+                if on_speech is not None:
+                    on_speech()          # you interrupted; stop talking over them
             elif started:
                 speech += STEP
             frames.append(data)
@@ -118,17 +140,28 @@ def _consume(next_block, threshold: float, silence_seconds: float, max_seconds: 
                     break                  # too short to meet the minimum, but over
             else:
                 frames.clear()             # drop the transient we were holding
-                if elapsed > NO_SPEECH:
+                # Do not give up while the speaker is still going: with barge-in
+                # the whole point is to be listening for the length of the reply,
+                # so the clock only starts once we have stopped talking.
+                if BARGE and SPEAKING_FLAG.exists():
+                    quiet_since = elapsed
+                elif elapsed - quiet_since > NO_SPEECH:
                     break                  # nobody spoke; the loop reads this as goodbye
     return np.concatenate(frames).flatten() if frames else np.array([], "float32")
 
 
-def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndarray":
-    """Wait for speech, then record until it stops."""
+def record(silence_seconds: float = 1.5, max_seconds: float = 120.0,
+           on_speech=None) -> "np.ndarray":
+    """Wait for speech, then record until it stops.
+
+    `on_speech` fires the moment speech is confirmed, which is how barge-in
+    works: the caller passes something that stops the speaker.
+    """
     if _device is not None:
         sink = _device.capture()
         try:
-            return _consume(sink.get, _device.threshold, silence_seconds, max_seconds)
+            return _consume(sink.get, lambda: _device.threshold,
+                            silence_seconds, max_seconds, on_speech)
         finally:
             _device.release()
 
@@ -147,7 +180,8 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0) -> "np.ndar
             data, _ = stream.read(BLOCK)
             return _rms(data), data.copy()
 
-        return _consume(next_block, _threshold_from(levels), silence_seconds, max_seconds)
+        return _consume(next_block, _threshold_from(levels), silence_seconds,
+                        max_seconds, on_speech)
 
 
 def room_level() -> tuple[float, float]:

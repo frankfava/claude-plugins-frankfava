@@ -87,8 +87,18 @@ def _kokoro(text: str, mine: int) -> str:
             audio = np.asarray(chunk, dtype="float32").reshape(-1)
             if GAIN != 1.0:
                 audio = np.clip(audio * GAIN, -1.0, 1.0)
-            out.write(audio)
-            played += audio.size
+            # Write in slices rather than whole chunks. Kokoro chunks by
+            # sentence, so checking only between chunks means a long sentence
+            # cannot be interrupted at all, which defeats barge-in.
+            slice_size = SAMPLE_RATE // 5           # 200 ms
+            for i in range(0, audio.size, slice_size):
+                if mine != _generation:
+                    break
+                piece = audio[i:i + slice_size]
+                out.write(piece)
+                played += piece.size
+            if mine != _generation:
+                break
     return f"spoke {played / SAMPLE_RATE:.1f}s with kokoro"
 
 

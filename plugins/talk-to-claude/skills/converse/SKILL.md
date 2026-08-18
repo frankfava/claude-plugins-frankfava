@@ -13,7 +13,9 @@ Report the result in plain language and nothing else. "Hands-free mode is on, ru
 
 ## While it is on
 
-End every reply by calling `speak` with a spoken version of it. Keep that to one to three sentences, no markdown, no lists, no file paths and no URLs. Write the full answer to the terminal as usual and speak a summary of it.
+Write your reply to the terminal first, then call `speak`. Never the other way round: the user should be able to read what you are about to say before they hear it, and if they interrupt you they have already seen it. Speaking first makes the text arrive after the audio it belongs to.
+
+Call `speak` with a spoken version of the reply. Keep that to one to three sentences, no markdown, no lists, no file paths and no URLs. Write the full answer to the terminal as usual and speak a summary of it.
 
 You do not need to call `listen` yourself. Once your turn ends the microphone opens on its own and whatever the user says comes back as the next thing you read, even if the turn took twenty minutes of work. That is the point of the mode: they should never have to return to the keyboard to steer you.
 

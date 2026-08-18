@@ -12,9 +12,9 @@ sid=$(jq -r '.session_id // ""' <<<"$input")
 
 bash "$(dirname "$0")/../bin/voice-server.sh" 2>/dev/null
 
-# Wait for the answer to finish playing before opening the microphone, or it
-# transcribes the computer and Claude replies to itself.
-while [[ -f "${TMPDIR:-/tmp}/talk-to-claude-speaking" ]]; do sleep 0.2; done
+# No wait for the speaker here. Listening starts immediately so you can talk
+# over the answer, and the recorder stops it when it hears you. On laptop
+# speakers set VOICE_BARGE=0, or every reply interrupts itself.
 
 heard=$(curl -sS --max-time 180 -X POST "http://127.0.0.1:${VOICE_PORT:-51100}/listen" 2>/dev/null)
 [[ -z "${heard// /}" ]] && exit 0        # nothing said: let the turn end
