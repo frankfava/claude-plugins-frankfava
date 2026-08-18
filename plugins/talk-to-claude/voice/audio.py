@@ -88,6 +88,8 @@ class _Device:
         self._wanted = threading.Event()        # starts closed: nothing to hear yet
         self._live = threading.Event()
         self._manual: bool | None = None        # None means follow demand
+        self._on_barge = None                   # called when you talk over us
+        self._barge_run = 0
         threading.Thread(target=self._run, daemon=True).start()
         threading.Thread(target=self._follow_demand, daemon=True).start()
 
@@ -127,10 +129,30 @@ class _Device:
                         sink = self._sink
                         if sink is None:
                             self._levels.append(level)   # learn the room between turns
+                            self._watch_for_barge(level)
                         else:
                             sink.put((level, data.copy()))
             finally:
                 self._live.clear()
+
+    def _watch_for_barge(self, level: float) -> None:
+        """Interrupt the speaker when someone talks over it.
+
+        This has to live here rather than in `record`, because narration never
+        calls `record`. Without it the microphone is open during a reply and
+        nothing looks at what it hears, so barge-in appears to do nothing
+        whenever hands-free is off.
+        """
+        if not (BARGE and self._on_barge and SPEAKING_FLAG.exists()):
+            self._barge_run = 0
+            return
+        if level > max(_threshold_from(self._levels), BARGE_THRESHOLD):
+            self._barge_run += 1
+            if self._barge_run >= ONSET:
+                self._barge_run = 0
+                self._on_barge()
+        else:
+            self._barge_run = 0
 
     def set_open(self, wanted: bool) -> None:
         self._wanted.set() if wanted else self._wanted.clear()
@@ -245,6 +267,12 @@ def record(silence_seconds: float = SILENCE, max_seconds: float = 120.0,
 
         return _consume(next_block, _threshold_from(levels), silence_seconds,
                         max_seconds, on_speech)
+
+
+def on_barge(callback) -> None:
+    """Register what to do when the user talks over the speaker."""
+    if _device is not None:
+        _device._on_barge = callback
 
 
 def microphone(state: str | None = None) -> str:

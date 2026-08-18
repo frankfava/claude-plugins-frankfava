@@ -19,6 +19,8 @@ import mute   # noqa: E402
 import stt    # noqa: E402
 import tts    # noqa: E402
 
+audio.on_barge(tts.interrupt)
+
 mcp = FastMCP("voice")
 
 
