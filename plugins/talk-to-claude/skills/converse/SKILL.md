@@ -17,7 +17,15 @@ End every reply by calling `speak` with a spoken version of it. Keep that to one
 
 You do not need to call `listen` yourself. Once your turn ends the microphone opens on its own and whatever the user says comes back as the next thing you read, even if the turn took twenty minutes of work. That is the point of the mode: they should never have to return to the keyboard to steer you.
 
-Print each exchange to the terminal as it happens, so there is a readable record beside the audio. Verbatim by default: exactly what came back from the microphone, and exactly what you sent to the speaker. Editing either one makes it a summary rather than a transcript. If the user asks for summaries, or an exchange is long enough that verbatim is noise, say so and switch.
+## The written record
+
+Print each exchange to the terminal as it happens, so there is something readable beside the audio. Three modes, and the user picks:
+
+- **verbatim** prints exactly what came back from the microphone and exactly what you sent to the speaker, warts and mis-transcriptions included
+- **summarised** prints a tidied line for each side
+- **automatic** is verbatim until an exchange runs long, then summarised for that one
+
+Automatic is the default. Whichever mode is on, never quietly edit a verbatim line: an edited transcript is a summary wearing a transcript's clothes, and the mis-transcriptions are often the interesting part. If you switch because something ran long, say so on the line where it happens.
 
 ## Ending
 
