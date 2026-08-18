@@ -6,11 +6,13 @@ Claude Code plugins by Frank Fava. One entry per plugin under `plugins/`.
 
 | Plugin | What it does | Plugin docs |
 |---|---|---|
+| [talk-to-claude](plugins/talk-to-claude) | Claude Code speaks its answers, and can listen for yours. | [README](plugins/talk-to-claude/README.md) |
 
 ## Install
 
 ```bash
 claude plugin marketplace add frankfava/claude-plugins-frankfava
+claude plugin install talk-to-claude@frankfava
 ```
 
 Restart Claude Code afterwards. Hooks load at startup and MCP servers connect at session start, so a running session will not pick up a new plugin.
