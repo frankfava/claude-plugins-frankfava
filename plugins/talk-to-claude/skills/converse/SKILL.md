@@ -1,6 +1,6 @@
 ---
-name: talk
-description: Start a hands-free spoken conversation, where each answer is spoken aloud and the reply is heard through the microphone without touching the keyboard. Use when the user asks to talk, have a conversation, go hands free, use voice mode, or says something like "let's talk this through out loud".
+name: converse
+description: Start a hands-free spoken conversation, where each answer is spoken aloud and the reply is heard through the microphone without touching the keyboard. Use when the user asks to converse, talk, have a conversation, go hands free, use voice mode, or says something like "let's talk this through out loud".
 ---
 
 # Spoken conversation loop
