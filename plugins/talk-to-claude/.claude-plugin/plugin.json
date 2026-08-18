@@ -1,0 +1,14 @@
+{
+  "name": "talk-to-claude",
+  "version": "0.1.48",
+  "description": "Speaks Claude's replies aloud and exposes speak and listen as MCP tools, so a conversation can run without the keyboard.",
+  "author": {
+    "name": "Frank Fava"
+  },
+  "keywords": [
+    "talk",
+    "claude",
+    "code",
+    "plugin"
+  ]
+}
