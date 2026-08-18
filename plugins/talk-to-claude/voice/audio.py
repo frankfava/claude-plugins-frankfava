@@ -12,9 +12,11 @@ device is live, which is a different posture from opening it per turn. Set
 VOICE_CONTINUOUS=0 to calibrate per recording instead.
 """
 
+import glob
 import os
 import queue
 import threading
+import time
 import time
 from collections import deque
 from pathlib import Path
@@ -52,6 +54,11 @@ SPEAKING_FLAG = Path(os.environ.get("TMPDIR", "/tmp")) / "talk-to-claude-speakin
 STEP = BLOCK / SAMPLE_RATE
 
 
+def _handsfree_anywhere() -> bool:
+    """Any session in hands-free mode keeps the shared device open."""
+    return bool(glob.glob(str(Path.home() / ".claude/.talk-to-claude-handsfree.*")))
+
+
 def _rms(block) -> float:
     return float(np.sqrt(np.mean(block ** 2)))
 
@@ -74,10 +81,25 @@ class _Device:
         # Held open, so there has to be a way to let go of it. Releasing closes
         # the stream and the operating system stops showing the microphone as
         # in use, which is the only honest way to say it is off.
-        self._wanted = threading.Event()
-        self._wanted.set()
+        self._wanted = threading.Event()        # starts closed: nothing to hear yet
         self._live = threading.Event()
+        self._manual: bool | None = None        # None means follow demand
         threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._follow_demand, daemon=True).start()
+
+    def _follow_demand(self) -> None:
+        """Open the device when something needs it, close it when nothing does.
+
+        Two things need it: a session in hands-free mode, which must be able to
+        hear a reply at any moment, and a recording in progress. Outside those
+        there is nothing to listen for, and an input stream held open for no
+        reason is a microphone indicator you cannot explain.
+        """
+        while True:
+            if self._manual is None:
+                needed = self._sink is not None or _handsfree_anywhere()
+                self.set_open(needed)
+            time.sleep(1.0)
 
     def _run(self) -> None:
         while True:
@@ -102,6 +124,9 @@ class _Device:
 
     def set_open(self, wanted: bool) -> None:
         self._wanted.set() if wanted else self._wanted.clear()
+
+    def wait_live(self, timeout: float = 5.0) -> bool:
+        return self._live.wait(timeout)
 
     @property
     def is_open(self) -> bool:
@@ -179,7 +204,14 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0,
     works: the caller passes something that stops the speaker.
     """
     if _device is not None:
-        sink = _device.capture()
+        held_open = _device.is_open
+        sink = _device.capture()            # this alone makes the device wanted
+        if not held_open:
+            _device.set_open(True)
+            _device.wait_live()
+            # No history yet, so pay for a little here rather than measure the
+            # room from nothing. Hands-free skips this: it never closed.
+            time.sleep(CALIBRATE)
         try:
             return _consume(sink.get, lambda: _device.threshold,
                             silence_seconds, max_seconds, on_speech)
@@ -209,7 +241,13 @@ def microphone(state: str | None = None) -> str:
     """Report or change whether the input device is held open."""
     if _device is None:
         return "per-turn"                   # only opened while recording anyway
+    if state == "auto":
+        _device._manual = None              # back to following demand
+        return "auto"
     if state in ("on", "off"):
+        # A manual choice sticks, or the demand watcher would undo it a second
+        # later and the control would look broken.
+        _device._manual = state == "on"
         _device.set_open(state == "on")
         # The stream closes on the reading thread's next pass, so report what
         # actually happened rather than what was asked for.

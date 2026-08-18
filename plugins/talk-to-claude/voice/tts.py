@@ -35,6 +35,24 @@ _ready = threading.Event()
 _generation = 0
 _gen_lock = threading.Lock()
 
+# How many utterances are in flight. A generation check cannot clear the flag,
+# because the utterance that gets interrupted is by definition no longer the
+# current generation, so it skips its own cleanup and the flag sticks forever.
+# A stuck flag keeps the barge threshold raised and stops the no-speech clock,
+# which presents as recordings that never end.
+_speaking = 0
+_speak_lock = threading.Lock()
+
+
+def _mark_speaking(delta: int) -> None:
+    global _speaking
+    with _speak_lock:
+        _speaking += delta
+        if _speaking > 0:
+            SPEAKING.touch()
+        elif SPEAKING.exists():
+            SPEAKING.unlink(missing_ok=True)
+
 
 def _load() -> None:
     global _pipeline
@@ -135,9 +153,8 @@ def speak_text(text: str) -> str:
     """Speak, publishing a flag so other hooks can tell we are mid-sentence."""
     mine = _claim()
     subprocess.run(["pkill", "-x", "say"], capture_output=True)
-    SPEAKING.touch()
+    _mark_speaking(1)
     try:
         return BACKENDS[BACKEND](text, mine)
     finally:
-        if mine == _generation:
-            SPEAKING.unlink(missing_ok=True)
+        _mark_speaking(-1)
