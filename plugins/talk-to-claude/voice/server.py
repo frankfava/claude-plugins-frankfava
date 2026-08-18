@@ -1,26 +1,22 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mcp<2", "sounddevice", "numpy", "pywhispercpp", "kokoro"]
+# dependencies = ["mcp<2", "sounddevice", "numpy", "pywhispercpp", "kokoro", "httpx"]
 # ///
 """Local MCP server exposing voice as tools. Runs on macOS and Windows."""
 
 import asyncio
 import os
 import re
-import time
 import sys
-import threading
 from pathlib import Path
 
-import numpy as np
-import sounddevice as sd
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
-from pywhispercpp.model import Model
-
 sys.path.insert(0, str(Path(__file__).parent))
-import tts   # noqa: E402  (needs the path above)
+import audio  # noqa: E402  (all three need the path above)
+import stt    # noqa: E402
+import tts    # noqa: E402
 
 mcp = FastMCP("voice")
 
@@ -29,81 +25,6 @@ mcp = FastMCP("voice")
 # mute flags. Only the global flag is reachable from here: a tool call carries
 # no session id, so per-session mute stays a hook concern.
 GLOBAL_MUTE = Path.home() / ".claude/.talk-to-claude-muted"
-
-SAMPLE_RATE = 16000
-BLOCK = 1600            # 0.1 s
-THRESHOLD = 0.015       # RMS amplitude that counts as speech
-
-# whisper.cpp reaches Metal and the Neural Engine, which the CTranslate2 path
-# cannot do on a Mac. Borrow Spokenly's download rather than keep a second copy
-# of the same 1.5GB weights; fall back to a model pywhispercpp fetches itself.
-SPOKENLY_MODEL = (Path.home() / "Library/Application Support/Spokenly/Models"
-                  / "whisper-ggml-distil-large-v3.5.bin")
-FALLBACK_MODEL = "large-v3-turbo"
-
-_model = None
-_model_ready = threading.Event()
-_last_used = time.monotonic()
-IDLE_UNLOAD = float(os.environ.get("VOICE_IDLE_UNLOAD", "900"))   # seconds
-
-
-def _load_model() -> None:
-    global _model
-    target = str(SPOKENLY_MODEL) if SPOKENLY_MODEL.exists() else FALLBACK_MODEL
-    _model = Model(target)
-    _model_ready.set()
-
-
-# Loading costs about nine seconds. Start it at boot so the wait lands before
-# anyone speaks rather than in the silence after the first utterance.
-threading.Thread(target=_load_model, daemon=True).start()
-
-
-def _reap() -> None:
-    """Drop the transcription model after a stretch of silence.
-
-    It reloads on demand, so the cost of being wrong is one slow call rather
-    than a permanent 1.5GB of resident memory on a laptop.
-    """
-    global _model
-    while True:
-        time.sleep(60)
-        if _model is not None and time.monotonic() - _last_used > IDLE_UNLOAD:
-            _model = None
-            _model_ready.clear()
-
-
-threading.Thread(target=_reap, daemon=True).start()
-
-
-def _transcribe(audio: "np.ndarray") -> str:
-    global _last_used
-    _last_used = time.monotonic()
-    if _model is None and not _model_ready.is_set():
-        threading.Thread(target=_load_model, daemon=True).start()
-    _model_ready.wait()
-    return " ".join(s.text for s in _model.transcribe(audio, language="en")).strip()
-
-
-def _record(silence_seconds: float, max_seconds: float = 120.0):
-    frames, started, silent_for, elapsed = [], False, 0.0, 0.0
-    step = BLOCK / SAMPLE_RATE
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
-                        dtype="float32", blocksize=BLOCK) as stream:
-        while elapsed < max_seconds:
-            data, _ = stream.read(BLOCK)
-            elapsed += step
-            level = float(np.sqrt(np.mean(data ** 2)))
-            if level > THRESHOLD:
-                started, silent_for = True, 0.0
-                frames.append(data.copy())
-            elif started:
-                silent_for += step
-                frames.append(data.copy())
-                if silent_for >= silence_seconds:
-                    break
-    return np.concatenate(frames).flatten() if frames else np.array([], "float32")
-
 
 def strip_markup(text: str) -> str:
     # \x60 is a backtick, written as an escape so this file can sit inside a
@@ -156,10 +77,10 @@ async def listen(silence_seconds: float = 1.5) -> str:
     Returns an empty string when the user says nothing, which is the
     signal to end the conversation.
     """
-    audio = await asyncio.to_thread(_record, silence_seconds)
-    if audio.size < SAMPLE_RATE // 2:
+    pcm = await asyncio.to_thread(audio.record, silence_seconds)
+    if pcm.size < audio.SAMPLE_RATE // 2:
         return ""
-    return await asyncio.to_thread(_transcribe, audio)
+    return await asyncio.to_thread(stt.transcribe, pcm)
 
 
 # Serving over HTTP rather than stdio is what lets the hooks reach the same

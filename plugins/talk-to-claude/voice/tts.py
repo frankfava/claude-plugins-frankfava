@@ -23,6 +23,9 @@ SPEED = float(os.environ.get("VOICE_TTS_SPEED", "1.15"))
 GAIN = float(os.environ.get("VOICE_TTS_GAIN", "2.0"))
 BACKEND = os.environ.get("VOICE_TTS", "kokoro")
 
+DEEPGRAM_KEY_FILE = Path.home() / ".claude/.deepgram-key"
+DEEPGRAM_VOICE = os.environ.get("VOICE_TTS_MODEL", "aura-2-arcas-en")
+
 _pipeline = None
 _ready = threading.Event()
 
@@ -89,13 +92,42 @@ def _kokoro(text: str, mine: int) -> str:
     return f"spoke {played / SAMPLE_RATE:.1f}s with kokoro"
 
 
+def _deepgram(text: str, mine: int) -> str:
+    """Hosted synthesis. No model resident, but the audio leaves the machine."""
+    import httpx
+    import sounddevice as sd
+
+    key = DEEPGRAM_KEY_FILE.read_text().strip()
+    r = httpx.post(
+        "https://api.deepgram.com/v1/speak",
+        params={"model": DEEPGRAM_VOICE, "encoding": "linear16", "sample_rate": "24000"},
+        headers={"Authorization": f"Token {key}", "Content-Type": "application/json"},
+        json={"text": text},
+        timeout=60,
+    )
+    r.raise_for_status()
+    pcm = np.frombuffer(r.content, dtype="<i2").astype("float32") / 32767
+    if mine != _generation:
+        return "superseded"
+    sd.play(np.clip(pcm * GAIN, -1.0, 1.0), 24000)
+    sd.wait()
+    return f"spoke {len(pcm)/24000:.1f}s with deepgram"
+
+
+BACKENDS = {
+    "say": lambda text, mine: _say(text),
+    "kokoro": _kokoro,
+    "deepgram": _deepgram,
+}
+
+
 def speak_text(text: str) -> str:
     """Speak, publishing a flag so other hooks can tell we are mid-sentence."""
     mine = _claim()
     subprocess.run(["pkill", "-x", "say"], capture_output=True)
     SPEAKING.touch()
     try:
-        return _kokoro(text, mine) if BACKEND == "kokoro" else _say(text)
+        return BACKENDS[BACKEND](text, mine)
     finally:
         if mine == _generation:
             SPEAKING.unlink(missing_ok=True)
