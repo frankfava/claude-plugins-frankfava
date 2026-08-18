@@ -14,6 +14,7 @@ import numpy as np
 
 SAMPLE_RATE = 24000          # what Kokoro emits
 VOICE = os.environ.get("VOICE_TTS_VOICE", "bm_lewis")
+SAY_VOICE = os.environ.get("VOICE_SAY_VOICE", "Matilda")
 BACKEND = os.environ.get("VOICE_TTS", "kokoro")
 
 _pipeline = None
@@ -44,7 +45,7 @@ def interrupt() -> None:
 
 
 def _say(text: str) -> str:
-    subprocess.run(["say", "-v", "Daniel", "-r", "190", "-f", "-"],
+    subprocess.run(["say", "-v", SAY_VOICE, "-r", "190", "-f", "-"],
                    input=text.encode("utf-8"), capture_output=True)
     return f"spoke {len(text)} characters with say"
 

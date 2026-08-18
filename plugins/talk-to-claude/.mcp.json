@@ -1,11 +1,8 @@
 {
 	"mcpServers": {
 		"voice": {
-			"command": "uv",
-			"args": [
-				"run",
-				"${CLAUDE_PLUGIN_ROOT}/voice/server.py"
-			]
+			"type": "http",
+			"url": "http://127.0.0.1:51100/mcp"
 		}
 	}
 }

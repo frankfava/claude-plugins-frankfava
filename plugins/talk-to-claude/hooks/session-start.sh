@@ -15,6 +15,9 @@ sid=$(jq -r '.session_id // ""' <<<"$input" 2>/dev/null)
 # Flags from sessions that have long since closed.
 find "$HOME/.claude" -maxdepth 1 -name '.talk-to-claude-muted.*' -mtime +1 -delete 2>/dev/null
 
+# MCP connects at session start, so the server has to exist by now.
+bash "$(dirname "$0")/../bin/voice-server.sh" >/dev/null 2>&1 &
+
 cat "$(dirname "$0")/../context/session-context.md"
 
 exit 0

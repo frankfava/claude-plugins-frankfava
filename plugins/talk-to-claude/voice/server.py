@@ -7,6 +7,7 @@
 import asyncio
 import os
 import re
+import time
 import sys
 import threading
 from pathlib import Path
@@ -40,6 +41,8 @@ FALLBACK_MODEL = "large-v3-turbo"
 
 _model = None
 _model_ready = threading.Event()
+_last_used = time.monotonic()
+IDLE_UNLOAD = float(os.environ.get("VOICE_IDLE_UNLOAD", "900"))   # seconds
 
 
 def _load_model() -> None:
@@ -54,7 +57,28 @@ def _load_model() -> None:
 threading.Thread(target=_load_model, daemon=True).start()
 
 
+def _reap() -> None:
+    """Drop the transcription model after a stretch of silence.
+
+    It reloads on demand, so the cost of being wrong is one slow call rather
+    than a permanent 1.5GB of resident memory on a laptop.
+    """
+    global _model
+    while True:
+        time.sleep(60)
+        if _model is not None and time.monotonic() - _last_used > IDLE_UNLOAD:
+            _model = None
+            _model_ready.clear()
+
+
+threading.Thread(target=_reap, daemon=True).start()
+
+
 def _transcribe(audio: "np.ndarray") -> str:
+    global _last_used
+    _last_used = time.monotonic()
+    if _model is None and not _model_ready.is_set():
+        threading.Thread(target=_load_model, daemon=True).start()
     _model_ready.wait()
     return " ".join(s.text for s in _model.transcribe(audio, language="en")).strip()
 
