@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"voice": {
+			"command": "uv",
+			"args": [
+				"run",
+				"${CLAUDE_PLUGIN_ROOT}/voice/server.py"
+			]
+		}
+	}
+}
