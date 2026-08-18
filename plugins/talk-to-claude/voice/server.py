@@ -109,6 +109,24 @@ async def http_say(request: Request) -> PlainTextResponse:
     return PlainTextResponse("speaking")
 
 
+@mcp.custom_route("/listen", methods=["POST"])
+async def http_listen(request: Request) -> PlainTextResponse:
+    """Record and transcribe, for callers that are not Claude.
+
+    The hands-free hook uses this. It exists so the loop survives me forgetting
+    to call the tool: the harness fires the hook when a turn ends, whatever I
+    was doing beforehand.
+    """
+    try:
+        seconds = float(request.query_params.get("silence", "1.5"))
+    except ValueError:
+        seconds = 1.5
+    pcm = await asyncio.to_thread(audio.record, seconds)
+    if pcm.size < audio.SAMPLE_RATE // 2:
+        return PlainTextResponse("")
+    return PlainTextResponse(await asyncio.to_thread(stt.transcribe, pcm))
+
+
 if __name__ == "__main__":
     if "--http" in sys.argv:
         mcp.settings.host = HOST

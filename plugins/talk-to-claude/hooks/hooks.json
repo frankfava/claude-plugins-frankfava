@@ -1,37 +1,46 @@
 {
-	"hooks": {
-		"SessionStart": [
-			{
-				"matcher": "startup|clear|compact",
-				"hooks": [
-					{
-						"type": "command",
-						"command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\""
-					}
-				]
-			}
-		],
-		"SubagentStop": [
-			{
-				"matcher": "Explore|Plan",
-				"hooks": [
-					{
-						"type": "command",
-						"command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agent-done.sh\"",
-						"async": true
-					}
-				]
-			}
-		],
-		"Stop": [
-			{
-				"hooks": [
-					{
-						"type": "command",
-						"command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/speak.sh\""
-					}
-				]
-			}
-		]
-	}
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "Explore|Plan",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agent-done.sh\"",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/speak.sh\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/handsfree.sh\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
 }

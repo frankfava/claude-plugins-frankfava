@@ -1,38 +1,28 @@
 ---
 name: converse
-description: Start a hands-free spoken conversation, where each answer is spoken aloud and the reply is heard through the microphone without touching the keyboard. Use when the user asks to converse, talk, have a conversation, go hands free, use voice mode, or says something like "let's talk this through out loud".
+description: Turn hands-free voice mode on or off. While it is on, every reply is spoken and Claude listens for your answer, so you can talk instead of typing and never touch the keyboard. Use when the user asks to converse, talk, go hands free, use voice mode, or says something like "let's talk this through out loud".
 ---
 
-# Spoken conversation loop
+# Hands-free mode
 
-The user is talking, not reading. Both halves of this run inside the turn, so you order them yourself and the turn does not end until the conversation does.
+Toggle it:
 
-## Before the first exchange
+    bash bin/voice-handsfree.sh toggle
 
-Silence the Stop hook for this session, or the last answer is spoken twice, once by the tool and again when the turn ends:
+Report the result in plain language and nothing else. "Hands-free mode is on, run it again to turn it off." Or "Hands-free mode is off." Do not mention hooks, flags, files or servers: this is a switch, not a procedure.
 
-    bash bin/voice-mute.sh on
+## While it is on
 
-Never write the flag file directly. The script resolves the live session id, which a value captured at session start does not survive a branch or a resume. Confirm in text that voice mode has started, then begin.
+End every reply by calling `speak` with a spoken version of it. Keep that to one to three sentences, no markdown, no lists, no file paths and no URLs. Write the full answer to the terminal as usual and speak a summary of it.
 
-## Every exchange
+You do not need to call `listen` yourself. Once your turn ends the microphone opens on its own and whatever the user says comes back as the next thing you read, even if the turn took twenty minutes of work. That is the point of the mode: they should never have to return to the keyboard to steer you.
 
-1. Call `speak` with a spoken version of your answer.
-2. Call `listen` to hear the reply.
-3. Act on what was said, then repeat from 1.
-
-The spoken version is not the written one. Keep it to one to three sentences, with no markdown, lists, tables, file paths or URLs. Write the full answer to the terminal as usual and speak a summary of it.
+Print each exchange to the terminal as it happens, so there is a readable record beside the audio. Verbatim by default: exactly what came back from the microphone, and exactly what you sent to the speaker. Editing either one makes it a summary rather than a transcript. If the user asks for summaries, or an exchange is long enough that verbatim is noise, say so and switch.
 
 ## Ending
 
-Stop the loop when `listen` returns an empty string, which means nothing was said, or when the user says goodbye, stop, that's it, or anything else that plainly ends the conversation.
+It ends when the user turns it off, or when they say goodbye, stop, that's it, or anything else that plainly finishes the conversation. Saying nothing at all also ends it, since the microphone gives up after a few seconds of silence.
 
-On the way out, say goodbye and then restore the hook:
+Turn it off on the way out:
 
-    bash bin/voice-mute.sh off
-
-Do this even if the loop ends early or something fails, otherwise the user is left silently muted with no idea why.
-
-## Why the ordering matters
-
-`speak` finishes before it returns, rather than detaching. That is deliberate: the next thing to happen is the microphone opening, and an open microphone in front of a talking speaker transcribes the computer, so Claude ends up answering its own last sentence. If you ever see a conversation spiral, that await is the thing to check.
+    bash bin/voice-handsfree.sh off
