@@ -19,7 +19,11 @@ type=$(jq -r '.agent_type // ""' <<<"$input")
 
 # The answer outranks the marker. If speech is already playing, skip this one
 # rather than cutting a sentence in half to announce an agent.
-pgrep -x say >/dev/null 2>&1 && exit 0
+[[ -f "${TMPDIR:-/tmp}/talk-to-claude-speaking" ]] && exit 0
 
-printf '%s' "$type finished" | say -v Daniel -r 190 -f -
+# Through the warm server so narration and the loop share a voice.
+bash "$(dirname "$0")/../bin/voice-server.sh" 2>/dev/null
+printf '%s' "$type finished" \
+  | curl -sS --max-time 5 -X POST --data-binary @- \
+      "http://127.0.0.1:${VOICE_PORT:-51100}/say" >/dev/null 2>&1
 exit 0

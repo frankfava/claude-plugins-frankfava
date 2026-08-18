@@ -9,8 +9,11 @@ that pauses first.
 import os
 import subprocess
 import threading
+from pathlib import Path
 
 import numpy as np
+
+SPEAKING = Path(os.environ.get("TMPDIR", "/tmp")) / "talk-to-claude-speaking"
 
 SAMPLE_RATE = 24000          # what Kokoro emits
 VOICE = os.environ.get("VOICE_TTS_VOICE", "bm_lewis")
@@ -70,5 +73,10 @@ def _kokoro(text: str) -> str:
 
 
 def speak_text(text: str) -> str:
+    """Speak, publishing a flag so other hooks can tell we are mid-sentence."""
     interrupt()
-    return _kokoro(text) if BACKEND == "kokoro" else _say(text)
+    SPEAKING.touch()
+    try:
+        return _kokoro(text) if BACKEND == "kokoro" else _say(text)
+    finally:
+        SPEAKING.unlink(missing_ok=True)

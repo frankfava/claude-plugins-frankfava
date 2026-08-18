@@ -15,6 +15,8 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 from pywhispercpp.model import Model
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -165,6 +167,26 @@ async def listen(silence_seconds: float = 1.5) -> str:
 # thing this exists to avoid.
 HOST = os.environ.get("VOICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("VOICE_PORT", "51100"))
+
+@mcp.custom_route("/say", methods=["POST"])
+async def http_say(request: Request) -> PlainTextResponse:
+    """Speak text posted as the request body, and return without waiting.
+
+    The hooks use this rather than the MCP tool. Speaking MCP costs a Python
+    interpreter and a handshake per turn; a POST costs a socket. Returning
+    immediately keeps the hook from blocking the turn for the length of the
+    sentence, which is what `async: true` exists for elsewhere.
+    """
+    if GLOBAL_MUTE.exists():
+        return PlainTextResponse("muted")
+
+    text = strip_markup((await request.body()).decode("utf-8"))
+    if not text:
+        return PlainTextResponse("nothing to speak")
+
+    asyncio.create_task(asyncio.to_thread(tts.speak_text, text))
+    return PlainTextResponse("speaking")
+
 
 if __name__ == "__main__":
     if "--http" in sys.argv:
