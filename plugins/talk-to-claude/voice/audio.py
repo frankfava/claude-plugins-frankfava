@@ -15,6 +15,7 @@ VOICE_CONTINUOUS=0 to calibrate per recording instead.
 import os
 import queue
 import threading
+import time
 from collections import deque
 from pathlib import Path
 
@@ -70,21 +71,41 @@ class _Device:
         self._levels: deque = deque(maxlen=HISTORY)
         self._sink: queue.Queue | None = None
         self._lock = threading.Lock()
+        # Held open, so there has to be a way to let go of it. Releasing closes
+        # the stream and the operating system stops showing the microphone as
+        # in use, which is the only honest way to say it is off.
+        self._wanted = threading.Event()
+        self._wanted.set()
+        self._live = threading.Event()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self) -> None:
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
-                            dtype="float32", blocksize=BLOCK) as stream:
-            for _ in range(int(WARMUP * SAMPLE_RATE / BLOCK)):
-                stream.read(BLOCK)          # devices return silence while starting
-            while True:
-                data, _ = stream.read(BLOCK)
-                level = _rms(data)
-                sink = self._sink
-                if sink is None:
-                    self._levels.append(level)   # only learn the room between turns
-                else:
-                    sink.put((level, data.copy()))
+        while True:
+            self._wanted.wait()
+            self._levels.clear()            # the room may have changed while off
+            try:
+                with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+                                    dtype="float32", blocksize=BLOCK) as stream:
+                    for _ in range(int(WARMUP * SAMPLE_RATE / BLOCK)):
+                        stream.read(BLOCK)  # devices return silence while starting
+                    self._live.set()
+                    while self._wanted.is_set():
+                        data, _ = stream.read(BLOCK)
+                        level = _rms(data)
+                        sink = self._sink
+                        if sink is None:
+                            self._levels.append(level)   # learn the room between turns
+                        else:
+                            sink.put((level, data.copy()))
+            finally:
+                self._live.clear()
+
+    def set_open(self, wanted: bool) -> None:
+        self._wanted.set() if wanted else self._wanted.clear()
+
+    @property
+    def is_open(self) -> bool:
+        return self._live.is_set()
 
     @property
     def threshold(self) -> float:
@@ -182,6 +203,22 @@ def record(silence_seconds: float = 1.5, max_seconds: float = 120.0,
 
         return _consume(next_block, _threshold_from(levels), silence_seconds,
                         max_seconds, on_speech)
+
+
+def microphone(state: str | None = None) -> str:
+    """Report or change whether the input device is held open."""
+    if _device is None:
+        return "per-turn"                   # only opened while recording anyway
+    if state in ("on", "off"):
+        _device.set_open(state == "on")
+        # The stream closes on the reading thread's next pass, so report what
+        # actually happened rather than what was asked for.
+        want = state == "on"
+        for _ in range(30):
+            if _device.is_open == want:
+                break
+            time.sleep(0.1)
+    return "on" if _device.is_open else "off"
 
 
 def room_level() -> tuple[float, float]:

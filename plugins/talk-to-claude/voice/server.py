@@ -127,6 +127,12 @@ async def http_listen(request: Request) -> PlainTextResponse:
     return PlainTextResponse(await asyncio.to_thread(stt.transcribe, pcm))
 
 
+@mcp.custom_route("/mic", methods=["POST"])
+async def http_mic(request: Request) -> PlainTextResponse:
+    """Turn the held-open input stream on or off, or report it."""
+    return PlainTextResponse(audio.microphone(request.query_params.get("state")))
+
+
 if __name__ == "__main__":
     if "--http" in sys.argv:
         mcp.settings.host = HOST
