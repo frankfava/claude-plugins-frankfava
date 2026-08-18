@@ -1,16 +1,22 @@
 # talk-to-claude
 
-Claude Code speaks its answers, and can listen for yours.
+Claude Code speaks its answers, listens for yours, and gets out of the way when you want to type.
 
-Two halves that work independently. A `Stop` hook reads each reply aloud, and an MCP server exposes `speak` and `listen` as tools so a conversation can run without the keyboard.
+Three things, each usable on its own. Replies are read aloud after every turn. `speak` and `listen` are MCP tools, so Claude can hold a conversation inside a single turn. And hands-free mode opens the microphone when a turn ends, so you can talk instead of typing without ever touching the keyboard.
+
+Everything runs through one long-lived local server, which is what makes it fast: models load once rather than on every reply.
 
 ## Requirements
 
-macOS. Speech uses the built-in `say`, and transcription uses whisper.cpp through Metal, neither of which has a Windows equivalent here.
+macOS, for now. Speech and transcription both have local paths that lean on Apple hardware.
 
-- [`jq`](https://jqlang.github.io/jq/) for the hooks
-- [`uv`](https://docs.astral.sh/uv/) for the MCP server, which resolves its own Python dependencies on first run
+- [`uv`](https://docs.astral.sh/uv/) for the server, which resolves its own Python dependencies on first run
+- [`jq`](https://jqlang.github.io/jq/) and `curl` for the hooks
+- `espeak-ng` for the local voice: `brew install espeak-ng`
 - Microphone permission, granted to your terminal application rather than to Claude Code
+- A Deepgram API key at `~/.claude/.deepgram-key` if you want hosted transcription, which is the default
+
+First run downloads a voice model, a few hundred megabytes, and takes a minute.
 
 ## Install
 
@@ -19,41 +25,71 @@ claude plugin marketplace add frankfava/talk-to-claude
 claude plugin install talk-to-claude@talk-to-claude
 ```
 
-Restart Claude Code. Hooks load at startup and MCP servers connect at session start, so a running session will not pick it up.
+Restart Claude Code. Hooks reload on demand, but MCP servers connect at session start and a transport change is only read at launch.
 
-## What it does
+## Talking
 
-Replies are read aloud after each turn, with markdown flattened first: code blocks are announced rather than read, links become their text, and headings and emphasis are dropped.
+Say "let's talk" or run `/talk-to-claude:converse` to toggle hands-free mode. It reports on or off in plain language, and running it again turns it off.
 
-A session-start hook tells Claude it is being heard, which matters more than any voice setting. Answers get shorter and stop arriving as tables.
+While it is on, every reply is spoken and the microphone opens when the turn ends. That includes turns where Claude went away and did twenty minutes of work, because it is driven by a hook rather than by Claude remembering. You never have to return to the keyboard to steer it.
 
-Two MCP tools are registered. `speak` reads text aloud, and `listen` records until you stop talking, then transcribes locally. Together they let Claude run its own conversational loop, since both live inside the turn.
+You can talk over the top of an answer. Speech interrupts the speaker mid-sentence and what you said becomes the next thing Claude reads, which is how interrupting a person works. This only behaves on headphones: through laptop speakers the microphone hears the synthesiser, so set `VOICE_BARGE=0` there.
+
+Each exchange is printed to the terminal as it happens, verbatim by default.
+
+## Muting, and the microphone
+
+Say "mute" and Claude writes a flag the hooks check. `bin/voice-mute.sh` is the underlying command: `on`, `off`, `global-on`, `global-off`, `here` to speak in one session while everything else is quiet, and `status` to see what is in force. Any of them takes a duration in seconds.
+
+Muting stops Claude speaking. It does not release the microphone, which is held open so it can hear you the moment you start. That is a separate switch:
+
+```bash
+bin/voice-mic.sh off      # releases the device; the recording indicator goes away
+bin/voice-mic.sh on
+```
+
+Speech also stands down on its own while another app is playing audio, so it will not talk over music.
+
+## Voice and transcription
+
+Speaking uses [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) by default, an 82M parameter model that runs locally and sounds nothing like a system voice. Audio starts playing while the rest of the sentence is still being synthesised, so a reply begins in under a second rather than after it.
+
+Transcription uses Deepgram by default, which is faster than running a model locally and keeps the server under 200MB instead of nearly two gigabytes.
+
+Both are swappable, and nothing above them cares which is in use:
+
+| | Options | Variable |
+|---|---|---|
+| Speaking | `kokoro`, `deepgram`, `say` | `VOICE_TTS` |
+| Transcription | `deepgram`, `whispercpp` | `VOICE_STT` |
+
+`whispercpp` runs on Metal and will borrow Spokenly's `distil-large-v3.5` weights if they are already on disk, otherwise downloading its own. Choose it when you would rather no audio left the machine.
+
+Other knobs: `VOICE_TTS_VOICE`, `VOICE_TTS_SPEED`, `VOICE_TTS_GAIN`, `VOICE_PORT`, `VOICE_IDLE_UNLOAD`, `VOICE_NO_SPEECH`, `VOICE_CONTINUOUS`, `VOICE_BARGE_THRESHOLD`.
+
+## Hearing you in a noisy room
+
+The microphone is held open, so the server learns the room continuously and sets its speech threshold from the current noise floor rather than from a constant. That removes the pause before listening, and means your own voice cannot poison the calibration by arriving during it.
+
+Speech has to be sustained to count. A single loud block is a door or a cup, so a run of them is required before a turn starts, and half a second of speech before silence is allowed to end one. Without both, a noise starts a recording and the silence timer ends it before you have opened your mouth.
 
 ## How this differs from `/voice`
 
 Claude Code ships a `/voice` command. It is dictation: you hold space, speak, and your words land in the prompt. It replaces typing.
 
-This replaces neither typing nor reading, it adds the other direction. `/voice` has no way to speak an answer back, and nothing in it lets Claude open the microphone itself. Every dictation tool works the same way, macOS dictation and Windows Voice Typing included: you decide to speak, and the audio becomes text you were going to type anyway.
+This adds the other direction. `/voice` cannot speak an answer back, and nothing in it lets Claude open the microphone itself. Every dictation tool works the same way, macOS dictation and Windows Voice Typing included: you decide to speak, and the audio becomes text you were going to type anyway.
 
-The `listen` tool is different in one respect that matters. It runs inside the turn, so Claude can ask a question and wait for the answer without the turn ending. That is what makes a conversation possible rather than a sequence of dictated prompts.
+The difference that matters is where listening happens. `listen` runs inside the turn, so Claude can ask something and wait for the answer without the turn ending, and hands-free mode listens after the turn without you asking. That is a conversation rather than a sequence of dictated prompts.
 
-They compose. Use `/voice` to dictate a long prompt, and let this read the reply back. `/talk` is for when you want neither hand on the keyboard.
+They compose. Dictate a long prompt with `/voice` and let this read the reply back.
 
-## Muting
+## Known gaps
 
-Say "mute" and Claude writes a flag file the hooks check.
+Hands-free has been used for a full conversation, but not yet through a turn where Claude goes away and does real work first. That is the case it was built for and it is untested.
 
-- This session only: `~/.claude/.talk-to-claude-muted.<session-id>`, cleared when that session next starts
-- Everywhere: `~/.claude/.talk-to-claude-muted`, which persists until deleted
-- One session back on while muted everywhere: `~/.claude/.talk-to-claude-unmuted.<session-id>`
+The barge-in threshold was measured in a cafe through AirPods, where a voice reads about 0.018 and the speaker bleed about 0.010. That gap is narrow and device specific, so it wants remeasuring at a desk.
 
-Write a unix timestamp into any of those to have it expire; leave it empty for indefinite. Expired flags delete themselves.
-
-Speech also stands down on its own while another app is playing audio, so it will not talk over music.
-
-## Transcription
-
-The `listen` tool uses whisper.cpp on Metal. It will borrow the `distil-large-v3.5` model if Spokenly has already downloaded one, and otherwise downloads `large-v3-turbo` itself on first use. Nothing is sent anywhere.
+Two sessions can both claim the speaker, since muting is per session and the server is shared. Mute the others for now.
 
 ## Credits
 
