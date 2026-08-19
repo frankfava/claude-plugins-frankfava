@@ -9,6 +9,7 @@ that pauses first.
 import os
 import queue
 import subprocess
+import time
 import threading
 from pathlib import Path
 
@@ -51,7 +52,10 @@ _speak_lock = threading.Lock()
 _queue: "queue.Queue[str | None]" = queue.Queue()
 
 
-def other_app_playing() -> bool:
+_last_check = (0.0, False)
+
+
+def other_app_playing(max_age: float = 1.0) -> bool:
     """True while another application is playing audio.
 
     Media apps hold a "Playing audio" power assertion for as long as they play.
@@ -59,12 +63,21 @@ def other_app_playing() -> bool:
     here rather than in a hook because a hook only guards its own caller, and
     anything posting straight to the server would talk over your music.
     """
+    # Shelling out to pmset costs tens of milliseconds, which is fine once per
+    # utterance and not fine every 200ms slice, so the answer is cached briefly.
+    global _last_check
+    when, value = _last_check
+    now = time.monotonic()
+    if now - when < max_age:
+        return value
     try:
         out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True,
                              text=True, timeout=2).stdout
+        value = 'named: "Playing audio"' in out
     except Exception:
-        return False
-    return 'named: "Playing audio"' in out
+        value = False
+    _last_check = (now, value)
+    return value
 
 
 def _mark_speaking(delta: int) -> None:
@@ -136,6 +149,11 @@ def _kokoro(text: str, mine: int) -> str:
             for i in range(0, audio.size, slice_size):
                 if mine != _generation:
                     break
+                # Checked here as well as before starting, because the reason to
+                # stay quiet can arrive halfway through a sentence.
+                if i and i % (slice_size * 5) == 0 and other_app_playing():
+                    clear()
+                    break
                 piece = audio[i:i + slice_size]
                 out.write(piece)
                 played += piece.size
@@ -178,6 +196,10 @@ def _drain() -> None:
     while True:
         text = _queue.get()
         if text is None:
+            continue
+        if other_app_playing():
+            clear()                 # the rest of the reply is stale too
+            _queue.task_done()
             continue
         try:
             _play(text)
