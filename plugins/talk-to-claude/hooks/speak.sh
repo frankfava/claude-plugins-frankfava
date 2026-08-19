@@ -10,7 +10,8 @@ if [[ "$(jq -r '.stop_hook_active // false' <<<"$input")" == "true" ]]; then
 fi
 
 sid=$(jq -r '.session_id // ""' <<<"$input")
-bash "$(dirname "$0")/../lib/mute.sh" "$sid" && exit 0
+mode=$(bash "$(dirname "$0")/../lib/mode.sh" "$sid")
+[[ "$mode" == narrate || "$mode" == converse ]] || exit 0
 
 # Media apps hold a "Playing audio" power assertion while they play. Kokoro and
 # `say` do not, so this never sees itself.

@@ -5,7 +5,8 @@
 input=$(cat)
 
 sid=$(jq -r '.session_id // ""' <<<"$input")
-[[ -n "$sid" && -f "$HOME/.claude/.talk-to-claude-handsfree.$sid" ]] || exit 0
+mode=$(bash "$(dirname "$0")/../lib/mode.sh" "$sid")
+[[ "$mode" == listen || "$mode" == converse ]] || exit 0
 
 # Blocking a Stop fires Stop again, flagged as re-entrant. Refusing on that flag
 # is the usual guard against a hook that never lets go, and it also limits the

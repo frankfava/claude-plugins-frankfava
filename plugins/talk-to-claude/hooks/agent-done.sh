@@ -5,7 +5,8 @@
 input=$(cat)
 
 sid=$(jq -r '.session_id // ""' <<<"$input")
-bash "$(dirname "$0")/../lib/mute.sh" "$sid" && exit 0
+mode=$(bash "$(dirname "$0")/../lib/mode.sh" "$sid")
+[[ "$mode" == narrate || "$mode" == converse ]] || exit 0
 
 # Stay quiet while another app is playing. See speak.sh.
 if pmset -g assertions 2>/dev/null | grep -q 'named: "Playing audio"'; then
