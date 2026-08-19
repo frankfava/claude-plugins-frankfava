@@ -8,11 +8,6 @@ sid=$(jq -r '.session_id // ""' <<<"$input")
 mode=$(bash "$(dirname "$0")/../lib/mode.sh" "$sid")
 [[ "$mode" == narrate || "$mode" == converse ]] || exit 0
 
-# Stay quiet while another app is playing. See speak.sh.
-if pmset -g assertions 2>/dev/null | grep -q 'named: "Playing audio"'; then
-  exit 0
-fi
-
 # SubagentStop also fires with an empty agent_type, which the matcher does not
 # filter. An unnamed agent has nothing worth announcing, so say nothing.
 type=$(jq -r '.agent_type // ""' <<<"$input")

@@ -11,9 +11,6 @@ sid=$(jq -r '.session_id // ""' <<<"$input")
 mode=$(bash "$(dirname "$0")/../lib/mode.sh" "$sid")
 [[ "$mode" == narrate || "$mode" == converse ]] || exit 0
 
-# Stay quiet while another app is playing.
-pmset -g assertions 2>/dev/null | grep -q 'named: "Playing audio"' && exit 0
-
 text=$(jq -r '.delta // ""' <<<"$input")
 [[ -z "${text// /}" ]] && exit 0
 

@@ -51,6 +51,22 @@ _speak_lock = threading.Lock()
 _queue: "queue.Queue[str | None]" = queue.Queue()
 
 
+def other_app_playing() -> bool:
+    """True while another application is playing audio.
+
+    Media apps hold a "Playing audio" power assertion for as long as they play.
+    Neither Kokoro nor `say` raises one, so this never sees itself. It lives
+    here rather than in a hook because a hook only guards its own caller, and
+    anything posting straight to the server would talk over your music.
+    """
+    try:
+        out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True,
+                             text=True, timeout=2).stdout
+    except Exception:
+        return False
+    return 'named: "Playing audio"' in out
+
+
 def _mark_speaking(delta: int) -> None:
     global _speaking
     with _speak_lock:
@@ -176,6 +192,8 @@ threading.Thread(target=_drain, daemon=True).start()
 
 def enqueue(text: str) -> str:
     """Queue an utterance. Used by narration, which arrives block by block."""
+    if other_app_playing():
+        return "not speaking: another app is playing audio"
     _queue.put(text)
     return f"queued {len(text)} characters"
 
