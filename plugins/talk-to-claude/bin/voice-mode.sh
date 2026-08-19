@@ -2,6 +2,7 @@
 # Report or set this session's voice mode. Resolves the live session id itself,
 # because one captured earlier does not survive a branch or a resume.
 set -u
+source "$(dirname "$0")/../lib/data-dir.sh"
 DIR="$HOME/.claude"
 
 session_id() {
@@ -10,7 +11,7 @@ session_id() {
 }
 
 SID=$(session_id)
-FILE="$DIR/.talk-to-claude-mode.$SID"
+FILE="$(data_dir)/mode.$SID"
 WANT="${1:-}"
 
 case "$WANT" in

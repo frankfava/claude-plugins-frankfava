@@ -10,10 +10,11 @@ input=$(cat)
 sid=$(jq -r '.session_id // ""' <<<"$input" 2>/dev/null)
 
 # Sessions never resume under a new id, so this one's mode is always stale.
-[[ -n "$sid" ]] && rm -f "$HOME/.claude/.talk-to-claude-mode.$sid"
+source "$(dirname "$0")/../lib/data-dir.sh"
+[[ -n "$sid" ]] && rm -f "$(data_dir)/mode.$sid"
 
 # Modes belonging to sessions that have long since closed.
-find "$HOME/.claude" -maxdepth 1 -name '.talk-to-claude-mode.*' -mtime +1 -delete 2>/dev/null
+find "$(data_dir)" -maxdepth 1 -name 'mode.*' -mtime +1 -delete 2>/dev/null
 
 # MCP connects at session start, so the server has to exist by now.
 bash "$(dirname "$0")/../bin/voice-server.sh" >/dev/null 2>&1 &
