@@ -7,6 +7,7 @@ that pauses first.
 """
 
 import os
+import queue
 import subprocess
 import threading
 from pathlib import Path
@@ -42,6 +43,12 @@ _gen_lock = threading.Lock()
 # which presents as recordings that never end.
 _speaking = 0
 _speak_lock = threading.Lock()
+
+# Narration arrives one block at a time, so utterances queue rather than
+# interrupt. Interrupting was right when a whole reply was one utterance and a
+# newer reply should win; with per-block narration it would leave you hearing
+# only the last paragraph of everything.
+_queue: "queue.Queue[str | None]" = queue.Queue()
 
 
 def _mark_speaking(delta: int) -> None:
@@ -79,8 +86,9 @@ def _claim() -> int:
 
 
 def interrupt() -> None:
-    """Stop whatever is currently playing. The new utterance always wins."""
+    """Stop playing and drop what is queued behind it."""
     _claim()
+    clear()
     subprocess.run(["pkill", "-x", "say"], capture_output=True)
 
 
@@ -149,7 +157,40 @@ BACKENDS = {
 }
 
 
-def speak_text(text: str) -> str:
+def _drain() -> None:
+    """Play queued utterances in order, one at a time."""
+    while True:
+        text = _queue.get()
+        if text is None:
+            continue
+        try:
+            _play(text)
+        except Exception:
+            pass                    # a failed utterance must not kill the queue
+        finally:
+            _queue.task_done()
+
+
+threading.Thread(target=_drain, daemon=True).start()
+
+
+def enqueue(text: str) -> str:
+    """Queue an utterance. Used by narration, which arrives block by block."""
+    _queue.put(text)
+    return f"queued {len(text)} characters"
+
+
+def clear() -> None:
+    """Drop anything waiting. Barge-in stops the whole reply, not one block."""
+    while not _queue.empty():
+        try:
+            _queue.get_nowait()
+            _queue.task_done()
+        except queue.Empty:
+            break
+
+
+def _play(text: str) -> str:
     """Speak, publishing a flag so other hooks can tell we are mid-sentence."""
     mine = _claim()
     subprocess.run(["pkill", "-x", "say"], capture_output=True)

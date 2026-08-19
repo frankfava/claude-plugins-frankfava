@@ -103,8 +103,7 @@ async def http_say(request: Request) -> PlainTextResponse:
     if not text:
         return PlainTextResponse("nothing to speak")
 
-    asyncio.create_task(asyncio.to_thread(tts.speak_text, text))
-    return PlainTextResponse("speaking")
+    return PlainTextResponse(tts.enqueue(text))
 
 
 @mcp.custom_route("/listen", methods=["POST"])

@@ -52,7 +52,7 @@ BARGE = os.environ.get("VOICE_BARGE", "1") != "0"
 # sits at 0.006 median and 0.010 at the 95th percentile, while a voice talking
 # over the speaker reaches about 0.018. The gap is real but narrow, so this
 # needs remeasuring on any other output device.
-BARGE_THRESHOLD = float(os.environ.get("VOICE_BARGE_THRESHOLD", "0.013"))
+BARGE_THRESHOLD = float(os.environ.get("VOICE_BARGE_THRESHOLD", "0.06"))
 SPEAKING_FLAG = Path(os.environ.get("TMPDIR", "/tmp")) / "talk-to-claude-speaking"
 STEP = BLOCK / SAMPLE_RATE
 

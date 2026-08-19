@@ -28,16 +28,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/speak.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/handsfree.sh\"",
+            "timeout": 300
           }
         ]
-      },
+      }
+    ],
+    "MessageDisplay": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/handsfree.sh\"",
-            "timeout": 300
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/narrate.sh\""
           }
         ]
       }
